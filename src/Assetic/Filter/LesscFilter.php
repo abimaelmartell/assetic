@@ -26,26 +26,56 @@ class LesscFilter extends BaseNodeFilter
 
     private $nodeBin;
 
-    private $parserOptions;
+    private $compress = false;
 
+    private $cleanCss = false;
+
+    private $loadPaths = array();
+
+    /**
+     * @param string $lesscBin Path to the lessc bin
+     * @param string $nodeBin optional Path to the node bin
+     */
     public function __construct($lesscBin = '/usr/local/bin/lessc', $nodeBin = null)
     {
         $this->lesscBin = $lesscBin;
         $this->nodeBin = $nodeBin;
     }
 
+    /**
+     * Load the filter into the asset
+     * @param AssetInterface $asset
+     */
     public function filterLoad(AssetInterface $asset)
     {
         $command = $this->nodeBin ? array($this->nodeBin, $this->lesscBin) : array($this->lesscBin);
 
-        // temporal io
+        // create temporal io
         $input = tempnam(sys_get_temp_dir(), 'assetic_lessc');
         file_put_contents($input, $asset->getContent());
 
-        $process = $this->createProcessBuilder($command)
-            ->add('--include-path='. $asset->getSourceDirectory())
-            ->add($input)
-            ->getProcess();
+        // extract asset's relative path
+        if ($dir = $asset->getSourceDirectory()) {
+            $this->addLoadPath($dir);
+        }
+
+        $pb = $this->createProcessBuilder($command);
+
+        if ($this->compress) {
+            $pb->add('--compress');
+        }
+
+        if ($this->cleanCss) {
+            $pb->add('--clean-css');
+        }
+
+        if (!empty($this->loadPaths)) {
+            $pb->add('--include-path=' . join($this->loadPaths, ':'));
+        }
+
+        $pb->add($input);
+
+        $process = $pb->getProcess();
 
         $code = $process->run();
         
@@ -54,6 +84,42 @@ class LesscFilter extends BaseNodeFilter
         }
 
         $asset->setContent($process->getOutput());
+    }
+
+    /**
+     * Compress output using clean-css
+     * @param bool $cleanCss
+     */
+    public function setCleanCss($cleanCss = true)
+    {
+        $this->cleanCss = $cleanCss;
+    }
+
+    /**
+     * Compress output by removing some whitespaces
+     * @param bool $compress
+     */
+    public function setCompress($compress = true)
+    {
+        $this->compress = $compress;
+    }
+
+    /**
+     * Add a path to the lessc includes path
+     * @param string $loadPath
+     */
+    public function addLoadPath($loadPath)
+    {
+        $this->loadPaths[] = $loadPath;
+    }
+
+    /**
+     * Set the lessc includes path
+     * @param array $loadPaths
+     */
+    public function setLoadPaths(array $loadPaths)
+    {
+        $this->loadPaths = $loadPaths;
     }
 
     public function filterDump(AssetInterface $asset)
